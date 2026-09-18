@@ -1,35 +1,304 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="shortcut icon" href="/favicon.png" type="image/x-icon">
-  <title>Meting-APlayer</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/aplayer/dist/APlayer.min.css">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" href="/favicon.png">
+    <title>🧪 API 测试 · Meting API</title>
+    <link rel="stylesheet" href="https://unpkg.com/aplayer/dist/APlayer.min.css">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-bg: rgba(99,102,241,0.07);
+            --success: #10b981;
+            --success-bg: rgba(16,185,129,0.07);
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --bg: #f1f5f9;
+            --bg-card: #ffffff;
+            --border: #e2e8f0;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+            --shadow: 0 2px 8px rgba(0,0,0,0.06);
+            --radius: 10px;
+            --radius-sm: 6px;
+            --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: var(--bg);
+            min-height: 100vh;
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+        }
+        .header {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 0;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+        .header-inner {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 0 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+        .header-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--success-bg);
+            color: var(--success);
+        }
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        .back-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+        .back-link:hover { text-decoration: underline; }
+        .container { max-width: 960px; margin: 0 auto; padding: 28px 24px; }
+        .section-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-title .platform-icon { font-size: 20px; }
+        .player-card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border);
+            margin-bottom: 16px;
+            overflow: hidden;
+            transition: box-shadow var(--transition);
+        }
+        .player-card:hover { box-shadow: var(--shadow); }
+        .player-label {
+            padding: 14px 20px 0;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .player-label .type-badge {
+            display: inline-flex;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            background: var(--primary-bg);
+            color: var(--primary);
+        }
+        .player-wrap { padding: 12px 20px 20px; }
+        .divider { margin: 32px 0 24px; border: none; border-top: 1px solid var(--border); }
+        footer {
+            text-align: center;
+            padding: 24px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+        footer a { color: var(--primary); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+        @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 2px var(--success-bg); } 50% { box-shadow: 0 0 0 5px rgba(16,185,129,0.1); } }
+        @media (max-width: 768px) {
+            .container { padding: 16px 14px; }
+            .header-inner { padding: 0 14px; }
+            .player-wrap { padding: 10px 14px 14px; }
+            .player-label { padding: 12px 14px 0; font-size: 12px; }
+            .section-title { font-size: 14px; margin-bottom: 12px; }
+            .player-card { margin-bottom: 12px; }
+        }
+        @media (max-width: 480px) {
+            .header h1 { font-size: 15px; }
+            .header-badge { font-size: 11px; padding: 3px 8px; }
+            .back-link { font-size: 12px; }
+            .container { padding: 12px 10px; }
+            .player-wrap { padding: 8px 10px 10px; }
+            .player-label { padding: 10px 10px 0; }
+            .type-badge { font-size: 10px; }
+            footer { padding: 16px 12px; font-size: 12px; }
+        }
+    </style>
 </head>
-
 <body>
-  <div id="meting_js"></div>
+    <div class="header">
+        <div class="header-inner">
+            <div class="header-left">
+                <h1>🧪 API 测试</h1>
+                <span class="header-badge"><span class="status-dot"></span>在线</span>
+            </div>
+            <a class="back-link" href="/">← 返回首页</a>
+        </div>
+    </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/aplayer/dist/APlayer.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/meting@2/dist/Meting.min.js"></script>
-  <script>
-    let playlist_id
-    const params = window.location.search.substring(1).split('&')
-    for (let i = 0; i < params.length; i++) {
-      let pair = params[i].split('=')
-      if (pair[0] === 'id') {
-        playlist_id = pair[1]
-        break
-      }
-    }
-    playlist_id = playlist_id || '2619366284'
-    // Use relative path for Vercel deployment
-    window.meting_api = '/api?server=:server&type=:type&id=:id&auth=:auth&r=:r'
-    document.getElementById('meting_js').innerHTML = `<meting-js server="netease" type="playlist" id="${playlist_id}" order="list"></meting-js>`
-  </script>
+    <div class="container">
+        <script src="https://unpkg.com/aplayer/dist/APlayer.min.js"></script>
+        <script>
+            // 自动匹配 URL 参数: ?server=xxx&type=xxx&id=xxx
+            const params = new URLSearchParams(window.location.search);
+            const defaultServer = params.get('server') || 'netease';
+            const defaultType = params.get('type') || 'playlist';
+            const defaultId = params.get('id') || '2619366284';
 
+            // Meting API 路径（自动适配当前域名）
+            const origin = window.location.origin;
+            window.meting_api = `${origin}/api?server=:server&type=:type&id=:id&auth=:auth&r=:r`;
+        </script>
+        <script src="https://unpkg.com/@xizeyoupan/meting@latest/dist/Meting.min.js"></script>
+
+        <!-- 默认展示区（从 URL 参数读取） -->
+        <div class="section-title" style="margin-top: 0;">
+            <span class="platform-icon">🎧</span>
+            自定义测试
+            <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:auto;">
+                ?server=netease&type=playlist&id=2619366284
+            </span>
+        </div>
+        <div class="player-card">
+            <div class="player-label">
+                <span id="customLabel">歌单</span>
+                <span class="type-badge" id="customBadge">playlist</span>
+            </div>
+            <div class="player-wrap" id="customPlayer"></div>
+        </div>
+
+        <!-- 网易云音乐示例 -->
+        <hr class="divider">
+        <div class="section-title">
+            <span class="platform-icon">🎶</span>
+            网易云音乐
+        </div>
+
+        <div class="player-card">
+            <div class="player-label">
+                歌单
+                <span class="type-badge">playlist</span>
+            </div>
+            <div class="player-wrap">
+                <meting-js server="netease" type="playlist" id="6907557348" list-folded="true"></meting-js>
+            </div>
+        </div>
+
+        <div class="player-card">
+            <div class="player-label">
+                单曲
+                <span class="type-badge">song</span>
+            </div>
+            <div class="player-wrap">
+                <meting-js server="netease" type="song" id="473403185" list-folded="true"></meting-js>
+            </div>
+        </div>
+
+        <div class="player-card">
+            <div class="player-label">
+                歌手
+                <span class="type-badge">artist</span>
+            </div>
+            <div class="player-wrap">
+                <meting-js server="netease" type="artist" id="12441107" list-folded="true"></meting-js>
+            </div>
+        </div>
+
+        <!-- QQ 音乐示例 -->
+        <hr class="divider">
+        <div class="section-title">
+            <span class="platform-icon">🎵</span>
+            QQ 音乐
+        </div>
+
+        <div class="player-card">
+            <div class="player-label">
+                歌单
+                <span class="type-badge">playlist</span>
+            </div>
+            <div class="player-wrap">
+                <meting-js server="tencent" type="playlist" id="7326220405" list-folded="true"></meting-js>
+            </div>
+        </div>
+
+        <div class="player-card">
+            <div class="player-label">
+                单曲
+                <span class="type-badge">song</span>
+            </div>
+            <div class="player-wrap">
+                <meting-js server="tencent" type="song" id="002Rnpvi058Qdm" list-folded="true"></meting-js>
+            </div>
+        </div>
+
+        <!-- 酷狗示例 -->
+        <hr class="divider">
+        <div class="section-title">
+            <span class="platform-icon">🐕</span>
+            酷狗音乐
+        </div>
+
+        <div class="player-card">
+            <div class="player-label">
+                歌单
+                <span class="type-badge">playlist</span>
+            </div>
+            <div class="player-wrap">
+                <meting-js server="kugou" type="playlist" id="579644054" list-folded="true"></meting-js>
+            </div>
+        </div>
+
+        <div class="player-card">
+            <div class="player-label">
+                单曲
+                <span class="type-badge">song</span>
+            </div>
+            <div class="player-wrap">
+                <meting-js server="kugou" type="song" id="6e14d9bc3b60f5f631996a9168349d15" list-folded="true"></meting-js>
+            </div>
+        </div>
+    </div>
+
+    <footer>Powered by <a href="https://github.com/metowolf/Meting" target="_blank">Meting</a></footer>
+
+    <script>
+        // 动态渲染自定义测试区
+        (function() {
+            const typeNames = { playlist: '歌单', song: '单曲', artist: '歌手', search: '搜索', lrc: '歌词', pic: '封面', url: '链接' };
+            const serverNames = { netease: '网易云音乐', tencent: 'QQ音乐', kugou: '酷狗音乐', baidu: '百度音乐', kuwo: '酷我音乐', xiami: '虾米音乐' };
+
+            document.getElementById('customLabel').textContent = typeNames[defaultType] || defaultType;
+            document.getElementById('customBadge').textContent = `${serverNames[defaultServer] || defaultServer} · ${defaultType}`;
+
+            const player = document.createElement('meting-js');
+            player.setAttribute('server', defaultServer);
+            player.setAttribute('type', defaultType);
+            player.setAttribute('id', defaultId);
+            player.setAttribute('list-folded', 'true');
+            document.getElementById('customPlayer').appendChild(player);
+        })();
+    </script>
 </body>
-
 </html>
