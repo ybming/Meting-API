@@ -28,15 +28,19 @@ function auth(name) {
 }
 
 async function song2data(api, song, type, id, API_URI) {
-  if (type === 'name') return song.name;
-  if (type === 'artist') return Array.isArray(song.artist) ? song.artist.join('/') : song.artist;
+  if (type === 'name') return song ? song.name : '';
+  if (type === 'artist') {
+    if (!song) return '';
+    return Array.isArray(song.artist) ? song.artist.join('/') : song.artist;
+  }
 
   if (type === 'url') {
     const urlData = JSON.parse(await api.url(id, 320));
     let mUrl = urlData.url;
     if (!mUrl) return '';
-    if (api.server === 'netease') {
-      if (mUrl[4] !== 's') mUrl = mUrl.replace('http://', 'https://');
+    // Force HTTPS to avoid mixed-content warnings on Vercel
+    if (mUrl.startsWith('http://')) {
+      mUrl = mUrl.replace('http://', 'https://');
     }
     return mUrl;
   }
@@ -126,9 +130,9 @@ module.exports = async function handler(request, response) {
   }
 
   // Content-Type
-  if (['song', 'playlist'].includes(type)) {
+  if (['song', 'playlist', 'artist', 'search'].includes(type)) {
     response.setHeader('Content-Type', 'application/json; charset=utf-8');
-  } else if (['name', 'lrc', 'artist'].includes(type)) {
+  } else if (['name', 'lrc'].includes(type)) {
     response.setHeader('Content-Type', 'text/plain; charset=utf-8');
   }
 
@@ -143,48 +147,53 @@ module.exports = async function handler(request, response) {
     // API_URI for constructing song URLs
     const API_URI = apiUri(request);
 
-    if (type === 'playlist') {
-      const rawData = await api.playlist(id);
+    // Build song entry with proper URL construction
+    function buildSong(song) {
+      return {
+        name: song.name,
+        artist: Array.isArray(song.artist) ? song.artist.join('/') : song.artist,
+        url: API_URI + '?server=' + song.source + '&type=url&id=' + song.url_id + (AUTH ? '&auth=' + auth(song.source + 'url' + song.url_id) : ''),
+        pic: API_URI + '?server=' + song.source + '&type=pic&id=' + song.pic_id + (AUTH ? '&auth=' + auth(song.source + 'pic' + song.pic_id) : ''),
+        lrc: API_URI + '?server=' + song.source + '&type=lrc&id=' + song.lyric_id + (AUTH ? '&auth=' + auth(song.source + 'lrc' + song.lyric_id) : ''),
+      };
+    }
+
+    // Types that return a list of songs (like playlist)
+    if (['playlist', 'artist', 'search'].includes(type)) {
+      let rawData;
+      if (type === 'playlist') {
+        rawData = await api.playlist(id);
+      } else if (type === 'artist') {
+        rawData = await api.artist(id);
+      } else if (type === 'search') {
+        rawData = await api.search(id);
+      }
       if (!rawData || rawData === '[]') {
-        response.status(200).send('{"error":"unknown playlist id"}');
+        response.status(200).send('{"error":"unknown ' + type + ' id"}');
         return;
       }
       const data = JSON.parse(rawData);
-      const playlist = [];
-      for (const song of data) {
-        playlist.push({
-          name: song.name,
-          artist: Array.isArray(song.artist) ? song.artist.join('/') : song.artist,
-          url: API_URI + '?server=' + song.source + '&type=url&id=' + song.url_id + (AUTH ? '&auth=' + auth(song.source + 'url' + song.url_id) : ''),
-          pic: API_URI + '?server=' + song.source + '&type=pic&id=' + song.pic_id + (AUTH ? '&auth=' + auth(song.source + 'pic' + song.pic_id) : ''),
-          lrc: API_URI + '?server=' + song.source + '&type=lrc&id=' + song.lyric_id + (AUTH ? '&auth=' + auth(song.source + 'lrc' + song.lyric_id) : ''),
-        });
-      }
-      response.send(JSON.stringify(playlist));
-    } else {
-      const needSong = !['url', 'pic', 'lrc'].includes(type);
-      if (needSong && !['name', 'artist', 'song'].includes(type)) {
-        response.status(200).send('{"error":"unknown type"}');
+      const result = data.map(buildSong);
+      response.send(JSON.stringify(result));
+    } else if (type === 'song') {
+      const rawSong = await api.song(id);
+      if (!rawSong || rawSong === '[]') {
+        response.status(200).send('{"error":"unknown song"}');
         return;
       }
-
-      let song;
-      if (needSong) {
-        const rawSong = await api.song(id);
-        if (!rawSong || rawSong === '[]') {
-          response.status(200).send('{"error":"unknown song"}');
-          return;
-        }
-        const arr = JSON.parse(rawSong);
-        song = arr[0];
-      }
-
-      const data = await song2data(api, song, type, id, API_URI);
+      const arr = JSON.parse(rawSong);
+      response.send(JSON.stringify([buildSong(arr[0])]));
+    } else if (['url', 'pic', 'lrc', 'name'].includes(type)) {
+      // These types work directly with the id
+      const data = await song2data(api, null, type, id, API_URI);
       if (!data) {
         response.status(404).send('{"error":"no data"}');
         return;
       }
       returnData(type, data, response);
+    } else {
+      response.status(200).send('{"error":"unknown type"}');
+      return;
     }
   } catch (err) {
     console.error('Meting API error:', err);
