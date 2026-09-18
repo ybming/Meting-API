@@ -1,0 +1,9 @@
+{
+  "name": "meting-api",
+  "version": "2.0.0",
+  "description": "Meting music API (Node.js port for Vercel)",
+  "main": "api/index.js",
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  }
+}
