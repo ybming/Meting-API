@@ -161,36 +161,11 @@
     <div class="container">
         <script src="https://unpkg.com/aplayer/dist/APlayer.min.js"></script>
         <script>
-            // 自动匹配 URL 参数: ?server=xxx&type=xxx&id=xxx
-            const params = new URLSearchParams(window.location.search);
-            const defaultServer = params.get('server') || 'netease';
-            const defaultType = params.get('type') || 'playlist';
-            const defaultId = params.get('id') || '2619366284';
-
-            // Meting API 路径（自动适配当前域名）
-            const origin = window.location.origin;
-            window.meting_api = `${origin}/api?server=:server&type=:type&id=:id&auth=:auth&r=:r`;
+            var meting_api = window.location.origin + '/api?server=:server&type=:type&id=:id&auth=:auth&r=:r';
         </script>
         <script src="https://unpkg.com/@xizeyoupan/meting@latest/dist/Meting.min.js"></script>
 
-        <!-- 默认展示区（从 URL 参数读取） -->
-        <div class="section-title" style="margin-top: 0;">
-            <span class="platform-icon">🎧</span>
-            自定义测试
-            <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:auto;">
-                ?server=netease&type=playlist&id=2619366284
-            </span>
-        </div>
-        <div class="player-card">
-            <div class="player-label">
-                <span id="customLabel">歌单</span>
-                <span class="type-badge" id="customBadge">playlist</span>
-            </div>
-            <div class="player-wrap" id="customPlayer"></div>
-        </div>
-
-        <!-- 网易云音乐示例 -->
-        <hr class="divider">
+        <!-- 网易云音乐 -->
         <div class="section-title">
             <span class="platform-icon">🎶</span>
             网易云音乐
@@ -226,8 +201,19 @@
             </div>
         </div>
 
-        <!-- QQ 音乐示例 -->
+        <div class="player-card">
+            <div class="player-label">
+                搜索
+                <span class="type-badge">search</span>
+            </div>
+            <div class="player-wrap">
+                <meting-js server="netease" type="search" id="KN33S0XXX" list-folded="true"></meting-js>
+            </div>
+        </div>
+
         <hr class="divider">
+
+        <!-- QQ 音乐 -->
         <div class="section-title">
             <span class="platform-icon">🎵</span>
             QQ 音乐
@@ -239,7 +225,7 @@
                 <span class="type-badge">playlist</span>
             </div>
             <div class="player-wrap">
-                <meting-js server="tencent" type="playlist" id="7720310262" list-folded="true"></meting-js>
+                <meting-js server="tencent" type="playlist" id="7326220405" list-folded="true"></meting-js>
             </div>
         </div>
 
@@ -249,56 +235,11 @@
                 <span class="type-badge">song</span>
             </div>
             <div class="player-wrap">
-                <meting-js server="tencent" type="song" id="125352689" list-folded="true"></meting-js>
-            </div>
-        </div>
-
-        <!-- 酷狗示例 -->
-        <hr class="divider">
-        <div class="section-title">
-            <span class="platform-icon">🐕</span>
-            酷狗音乐
-        </div>
-
-        <div class="player-card">
-            <div class="player-label">
-                歌单
-                <span class="type-badge">playlist</span>
-            </div>
-            <div class="player-wrap">
-                <meting-js server="kugou" type="playlist" id="579644054" list-folded="true"></meting-js>
-            </div>
-        </div>
-
-        <div class="player-card">
-            <div class="player-label">
-                单曲
-                <span class="type-badge">song</span>
-            </div>
-            <div class="player-wrap">
-                <meting-js server="kugou" type="song" id="6e14d9bc3b60f5f631996a9168349d15" list-folded="true"></meting-js>
+                <meting-js server="tencent" type="song" id="002Rnpvi058Qdm" list-folded="true"></meting-js>
             </div>
         </div>
     </div>
 
-    <footer>Powered by <a href="https://github.com/ybming/Meting-API" target="_blank">Meting</a></footer>
-
-    <script>
-        // 动态渲染自定义测试区
-        (function() {
-            const typeNames = { playlist: '歌单', song: '单曲', artist: '歌手', search: '搜索', lrc: '歌词', pic: '封面', url: '链接' };
-            const serverNames = { netease: '网易云音乐', tencent: 'QQ音乐', kugou: '酷狗音乐', baidu: '百度音乐', kuwo: '酷我音乐', xiami: '虾米音乐' };
-
-            document.getElementById('customLabel').textContent = typeNames[defaultType] || defaultType;
-            document.getElementById('customBadge').textContent = `${serverNames[defaultServer] || defaultServer} · ${defaultType}`;
-
-            const player = document.createElement('meting-js');
-            player.setAttribute('server', defaultServer);
-            player.setAttribute('type', defaultType);
-            player.setAttribute('id', defaultId);
-            player.setAttribute('list-folded', 'true');
-            document.getElementById('customPlayer').appendChild(player);
-        })();
-    </script>
+    <footer>Powered by <a href="https://github.com/ybming/meting-API" target="_blank">Meting</a></footer>
 </body>
 </html>
