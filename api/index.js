@@ -12,9 +12,17 @@ const crypto = require('crypto');
 const Meting = require('../lib/meting');
 
 // Configuration
-const TLYRIC = true;       // 显示中文歌词
-const AUTH = false;        // 是否开启 AUTH
+const TLYRIC = true;
+const AUTH = false;
 const AUTH_SECRET = 'meting-secret';
+
+// Content-Type mapping
+const CONTENT_TYPE_MAP = {
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4',
+  flac: 'audio/flac', wav: 'audio/wav', ogg: 'audio/ogg',
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+  gif: 'image/gif', webp: 'image/webp',
+};
 
 function apiUri(request) {
   const host = request.headers.host || '';
@@ -26,89 +34,6 @@ function apiUri(request) {
 function auth(name) {
   return crypto.createHmac('sha1', AUTH_SECRET).update(name).digest('hex');
 }
-
-async function song2data(api, song, type, id, API_URI) {
-  if (type === 'name') return song ? song.name : '';
-  if (type === 'artist') {
-    if (!song) return '';
-    return Array.isArray(song.artist) ? song.artist.join('/') : song.artist;
-  }
-
-  if (type === 'url') {
-    const urlData = JSON.parse(await api.url(id, 320));
-    let mUrl = urlData.url;
-    if (!mUrl) return '';
-    if (mUrl.startsWith('http://')) {
-      mUrl = mUrl.replace('http://', 'https://');
-    }
-    return mUrl;
-  }
-
-  if (type === 'pic') {
-    return JSON.parse(await api.pic(id, 90)).url;
-  }
-
-  if (type === 'lrc') {
-    const lrcData = JSON.parse(await api.lyric(id));
-    let lrc;
-    if (!lrcData.lyric || lrcData.lyric.trim() === '') {
-      lrc = '[00:00.00]这似乎是一首纯音乐呢，请尽情欣赏它吧！';
-    } else if (!lrcData.tlyric || lrcData.tlyric.trim() === '') {
-      lrc = lrcData.lyric;
-    } else if (TLYRIC) {
-      const lrcArr = lrcData.lyric.split('\n');
-      const lrcCnArr = lrcData.tlyric.split('\n');
-      const lrcCnMap = {};
-      for (const v of lrcCnArr) {
-        if (!v) continue;
-        const parts = v.split(']', 2);
-        const key = parts[0] + ']';
-        const value = (parts[1] || '').replace(/\s+/g, ' ').trim();
-        lrcCnMap[key] = value;
-      }
-      for (let i = 0; i < lrcArr.length; i++) {
-        const v = lrcArr[i];
-        if (!v) continue;
-        const key = v.split(']', 1)[0] + ']';
-        if (lrcCnMap[key] && lrcCnMap[key] !== '//') {
-          lrcArr[i] = v + ' (' + lrcCnMap[key] + ')';
-          delete lrcCnMap[key];
-        }
-      }
-      lrc = lrcArr.join('\n');
-    } else {
-      lrc = lrcData.lyric;
-    }
-    return lrc;
-  }
-
-  if (type === 'song') {
-    return JSON.stringify([{
-      name: song.name,
-      artist: Array.isArray(song.artist) ? song.artist.join('/') : song.artist,
-      url: API_URI + '?server=' + song.source + '&type=url&id=' + song.url_id + (AUTH ? '&auth=' + auth(song.source + 'url' + song.url_id) : ''),
-      pic: API_URI + '?server=' + song.source + '&type=pic&id=' + song.pic_id + (AUTH ? '&auth=' + auth(song.source + 'pic' + song.pic_id) : ''),
-      lrc: API_URI + '?server=' + song.source + '&type=lrc&id=' + song.lyric_id + (AUTH ? '&auth=' + auth(song.source + 'lrc' + song.lyric_id) : ''),
-    }]);
-  }
-
-  return '';
-}
-
-// Content-Type mapping for common file extensions
-const CONTENT_TYPE_MAP = {
-  mp3: 'audio/mpeg',
-  m4a: 'audio/mp4',
-  mp4: 'audio/mp4',
-  flac: 'audio/flac',
-  wav: 'audio/wav',
-  ogg: 'audio/ogg',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  png: 'image/png',
-  gif: 'image/gif',
-  webp: 'image/webp',
-};
 
 function getContentType(url, fallback) {
   if (fallback) return fallback;
@@ -122,12 +47,118 @@ function getContentType(url, fallback) {
   }
 }
 
+// Test if a CDN URL returns valid content (not a fake 100-byte placeholder)
+async function isUrlValid(url, isAudio = true) {
+  try {
+    const res = await fetch(url, {
+      method: 'HEAD',
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    });
+    if (!res.ok) return false;
+    const len = parseInt(res.headers.get('content-length') || '0');
+    if (isAudio && len > 1024) return true;
+    if (!isAudio && len > 0) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+// Servers that work reliably from overseas Vercel (no vkey/IP binding issues)
+const RELIABLE_SERVERS = ['netease', 'kugou', 'kuwo', 'baidu'];
+// Servers that need fallback (vkey bound to domestic IPs)
+const PROBLEMATIC_SERVERS = ['tencent', 'xiami'];
+
+// Get working audio URL with fallback across servers
+async function getWorkingAudioUrl(server, id) {
+  // For reliable servers, just get URL directly (proxy handles streaming)
+  if (RELIABLE_SERVERS.includes(server)) {
+    try {
+      const api = new Meting(server);
+      api.format(true);
+      const urlData = JSON.parse(await api.url(id, 320));
+      let url = urlData.url;
+      if (!url) throw new Error('no url');
+      if (url.startsWith('http://')) url = url.replace('http://', 'https://');
+      return url;
+    } catch (err) {
+      console.log(`[WARN] ${server} direct URL failed: ${err.message}`);
+    }
+  }
+  
+  // For problematic servers (or if reliable failed), try fallback chain
+  // Step 1: Get song info from original server
+  try {
+    const origApi = new Meting(server);
+    origApi.format(true);
+    const songRaw = await origApi.song(id);
+    const songArr = JSON.parse(songRaw);
+    if (!songArr || songArr.length === 0) throw new Error('no song');
+    
+    const songInfo = songArr[0];
+    const searchTerm = (Array.isArray(songInfo.artist) ? songInfo.artist.join(' ') : (songInfo.artist || '')) + ' ' + songInfo.name;
+    console.log(`[FALLBACK] ${server} → searching: ${searchTerm}`);
+    
+    // Step 2: Try each fallback server
+    const fallbackServers = RELIABLE_SERVERS; // + PROBLEMATIC_SERVERS later if needed
+    for (const fbServer of fallbackServers) {
+      try {
+        const fbApi = new Meting(fbServer);
+        fbApi.format(true);
+        const searchRaw = await fbApi.search(searchTerm);
+        const results = JSON.parse(searchRaw);
+        if (!results || results.length === 0) continue;
+        
+        const bestMatch = results[0];
+        if (!bestMatch.url_id) continue;
+        
+        const fbUrlData = JSON.parse(await fbApi.url(bestMatch.url_id, 320));
+        let fbUrl = fbUrlData.url;
+        if (!fbUrl) continue;
+        if (fbUrl.startsWith('http://')) fbUrl = fbUrl.replace('http://', 'https://');
+        
+        console.log(`[FALLBACK] Found working URL from ${fbServer}`);
+        return fbUrl;
+      } catch (e) {
+        continue;
+      }
+    }
+  } catch (err) {
+    console.log(`[FALLBACK] ${server} fallback error: ${err.message}`);
+  }
+  
+  // Last resort: try original server one more time
+  try {
+    const api = new Meting(server);
+    api.format(true);
+    const urlData = JSON.parse(await api.url(id, 320));
+    let url = urlData.url;
+    if (url && url.startsWith('http://')) url = url.replace('http://', 'https://');
+    return url || null;
+  } catch {
+    return null;
+  }
+}
+
+// Get working pic URL with fallback
+async function getWorkingPicUrl(server, id) {
+  try {
+    const api = new Meting(server);
+    api.format(true);
+    const picData = JSON.parse(await api.pic(id, 90));
+    let url = picData.url;
+    if (!url) return null;
+    if (url.startsWith('http://')) url = url.replace('http://', 'https://');
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 // Proxy remote file with Range support
 async function proxyRemoteFile(url, request, response, fallbackContentType) {
-  // Forward Range header for seek support
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    'Referer': 'https://y.qq.com/',
   };
   if (request.headers.range) {
     headers['Range'] = request.headers.range;
@@ -136,7 +167,12 @@ async function proxyRemoteFile(url, request, response, fallbackContentType) {
   try {
     const remoteRes = await fetch(url, { headers });
     
-    // Copy relevant response headers
+    if (!remoteRes.ok) {
+      response.statusCode = remoteRes.status;
+      response.end();
+      return;
+    }
+    
     const contentType = getContentType(url, remoteRes.headers.get('content-type') || fallbackContentType);
     response.setHeader('Content-Type', contentType);
     
@@ -146,43 +182,25 @@ async function proxyRemoteFile(url, request, response, fallbackContentType) {
     }
     
     const acceptRanges = remoteRes.headers.get('accept-ranges');
-    if (acceptRanges) {
-      response.setHeader('Accept-Ranges', acceptRanges);
-    } else {
-      response.setHeader('Accept-Ranges', 'bytes');
+    response.setHeader('Accept-Ranges', acceptRanges || 'bytes');
+    
+    response.statusCode = remoteRes.status || 200;
+    
+    if (remoteRes.status === 206) {
+      const cr = remoteRes.headers.get('content-range');
+      if (cr) response.setHeader('Content-Range', cr);
     }
     
-    // Handle status code (especially 206 Partial Content for range requests)
-    const statusCode = remoteRes.status || 200;
-    response.statusCode = statusCode;
-    
-    // Copy Content-Range header for 206 responses
-    if (statusCode === 206) {
-      const contentRange = remoteRes.headers.get('content-range');
-      if (contentRange) {
-        response.setHeader('Content-Range', contentRange);
-      }
-    }
-    
-    // Cache control
     response.setHeader('Cache-Control', 'public, max-age=3600');
     response.setHeader('Access-Control-Allow-Origin', '*');
     
-    // Stream the response body
-    if (remoteRes.body && typeof remoteRes.body.pipe === 'function') {
-      // Node.js Readable stream
-      remoteRes.body.pipe(response);
-    } else if (remoteRes.body && typeof remoteRes.body.getReader === 'function') {
-      // Web Streams API
+    // Stream response
+    if (remoteRes.body && typeof remoteRes.body.getReader === 'function') {
       const reader = remoteRes.body.getReader();
       const write = (chunk) => new Promise((resolve) => {
-        if (!response.write(chunk)) {
-          response.once('drain', resolve);
-        } else {
-          resolve();
-        }
+        if (!response.write(chunk)) response.once('drain', resolve);
+        else resolve();
       });
-      
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -190,13 +208,12 @@ async function proxyRemoteFile(url, request, response, fallbackContentType) {
           await write(value);
         }
         response.end();
-      } catch (pipeErr) {
+      } catch {
         try { response.end(); } catch {}
       }
     } else {
-      // Fallback: get all as buffer and send
-      const buffer = Buffer.from(await remoteRes.arrayBuffer());
-      response.end(buffer);
+      const buf = Buffer.from(await remoteRes.arrayBuffer());
+      response.end(buf);
     }
   } catch (err) {
     console.error('Proxy error:', err.message);
@@ -205,10 +222,20 @@ async function proxyRemoteFile(url, request, response, fallbackContentType) {
   }
 }
 
+// Build song entry
+function buildSong(api, server, song, API_URI) {
+  return {
+    name: song.name,
+    artist: Array.isArray(song.artist) ? song.artist.join('/') : song.artist,
+    url: API_URI + '?server=' + (song.source || server) + '&type=url&id=' + song.url_id + (AUTH ? '&auth=' + auth(server + 'url' + song.url_id) : ''),
+    pic: API_URI + '?server=' + (song.source || server) + '&type=pic&id=' + song.pic_id + (AUTH ? '&auth=' + auth(server + 'pic' + song.pic_id) : ''),
+    lrc: API_URI + '?server=' + (song.source || server) + '&type=lrc&id=' + song.lyric_id + (AUTH ? '&auth=' + auth(server + 'lrc' + song.lyric_id) : ''),
+  };
+}
+
 module.exports = async function handler(request, response) {
   const { query } = request;
 
-  // No params → redirect to docs
   if (!query.type || !query.id) {
     response.statusCode = 302;
     response.setHeader('Location', '/docs/');
@@ -220,7 +247,6 @@ module.exports = async function handler(request, response) {
   const type = query.type;
   const id = query.id;
 
-  // Auth check
   if (AUTH) {
     const token = query.auth || '';
     if (['url', 'pic', 'lrc'].includes(type)) {
@@ -232,46 +258,29 @@ module.exports = async function handler(request, response) {
     }
   }
 
-  // CORS
   response.setHeader('Access-Control-Allow-Origin', '*');
   response.setHeader('Access-Control-Allow-Methods', 'GET');
 
   try {
     const api = new Meting(server);
     api.format(true);
-
-    // API_URI for constructing song URLs
     const API_URI = apiUri(request);
 
-    // Build song entry with proper URL construction
-    function buildSong(song) {
-      return {
-        name: song.name,
-        artist: Array.isArray(song.artist) ? song.artist.join('/') : song.artist,
-        url: API_URI + '?server=' + song.source + '&type=url&id=' + song.url_id + (AUTH ? '&auth=' + auth(song.source + 'url' + song.url_id) : ''),
-        pic: API_URI + '?server=' + song.source + '&type=pic&id=' + song.pic_id + (AUTH ? '&auth=' + auth(song.source + 'pic' + song.pic_id) : ''),
-        lrc: API_URI + '?server=' + song.source + '&type=lrc&id=' + song.lyric_id + (AUTH ? '&auth=' + auth(song.source + 'lrc' + song.lyric_id) : ''),
-      };
-    }
-
-    // Types that return a list of songs (like playlist)
+    // List types: playlist, artist, search
     if (['playlist', 'artist', 'search'].includes(type)) {
       response.setHeader('Content-Type', 'application/json; charset=utf-8');
       let rawData;
-      if (type === 'playlist') {
-        rawData = await api.playlist(id);
-      } else if (type === 'artist') {
-        rawData = await api.artist(id);
-      } else if (type === 'search') {
-        rawData = await api.search(id);
-      }
+      if (type === 'playlist') rawData = await api.playlist(id);
+      else if (type === 'artist') rawData = await api.artist(id);
+      else rawData = await api.search(id);
+      
       if (!rawData || rawData === '[]') {
         response.statusCode = 200;
         response.end('{"error":"unknown ' + type + ' id"}');
         return;
       }
       const data = JSON.parse(rawData);
-      const result = data.map(buildSong);
+      const result = data.map(s => buildSong(api, server, s, API_URI));
       response.end(JSON.stringify(result));
     } else if (type === 'song') {
       response.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -282,27 +291,61 @@ module.exports = async function handler(request, response) {
         return;
       }
       const arr = JSON.parse(rawSong);
-      response.end(JSON.stringify([buildSong(arr[0])]));
-    } else if (type === 'url' || type === 'pic') {
-      // Proxy mode for media files — fetch CDN on server side
-      const data = await song2data(api, null, type, id, API_URI);
-      if (!data || !data.startsWith('http')) {
+      response.end(JSON.stringify([buildSong(api, server, arr[0], API_URI)]));
+    } else if (type === 'url') {
+      // Audio proxy with fallback
+      const url = await getWorkingAudioUrl(server, id);
+      if (!url) {
         response.statusCode = 404;
         response.setHeader('Content-Type', 'application/json');
         response.end('{"error":"no data"}');
         return;
       }
-      await proxyRemoteFile(data, request, response, type === 'url' ? 'audio/mpeg' : 'image/jpeg');
+      await proxyRemoteFile(url, request, response, 'audio/mpeg');
+    } else if (type === 'pic') {
+      // Image proxy (no fallback needed for pics - they usually work)
+      const url = await getWorkingPicUrl(server, id);
+      if (!url) {
+        response.statusCode = 404;
+        response.end('{"error":"no data"}');
+        return;
+      }
+      await proxyRemoteFile(url, request, response, 'image/jpeg');
     } else if (type === 'lrc') {
       response.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      const data = await song2data(api, null, type, id, API_URI);
-      response.end(data);
+      const lrcData = JSON.parse(await api.lyric(id));
+      let lrc;
+      if (!lrcData.lyric || lrcData.lyric.trim() === '') {
+        lrc = '[00:00.00]This appears to be pure music, enjoy it!';
+      } else if (!lrcData.tlyric || lrcData.tlyric.trim() === '') {
+        lrc = lrcData.lyric;
+      } else if (TLYRIC) {
+        const lrcArr = lrcData.lyric.split('\n');
+        const lrcCnArr = lrcData.tlyric.split('\n');
+        const lrcCnMap = {};
+        for (const v of lrcCnArr) {
+          if (!v) continue;
+          const parts = v.split(']', 2);
+          lrcCnMap[parts[0] + ']'] = (parts[1] || '').replace(/\s+/g, ' ').trim();
+        }
+        for (let i = 0; i < lrcArr.length; i++) {
+          const v = lrcArr[i];
+          if (!v) continue;
+          const key = v.split(']', 1)[0] + ']';
+          if (lrcCnMap[key] && lrcCnMap[key] !== '//') {
+            lrcArr[i] = v + ' (' + lrcCnMap[key] + ')';
+            delete lrcCnMap[key];
+          }
+        }
+        lrc = lrcArr.join('\n');
+      } else {
+        lrc = lrcData.lyric;
+      }
+      response.end(lrc);
     } else if (type === 'name' || type === 'artist') {
       response.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      // These need the song object, let's fetch it
       const rawSong = await api.song(id);
       if (!rawSong || rawSong === '[]') {
-        response.statusCode = 200;
         response.end('');
         return;
       }
